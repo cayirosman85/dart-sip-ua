@@ -666,7 +666,11 @@ if (!patchedSDP.contains('a=fingerprint:')) {
   );
 }
 
-emit(EventSdp(originator: 'remote', type: 'offer', sdp: patchedSDP));
+ emit(EventSdp(
+  originator: Originator.remote,
+  type: SdpType.offer,
+  sdp: patchedSDP,
+));
 RTCSessionDescription offer = RTCSessionDescription(patchedSDP, 'offer');
 
 try {
