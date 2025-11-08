@@ -653,30 +653,32 @@ class RTCSession extends EventManager implements Owner {
     if (_late_sdp) return;
 
     logger.d('emit "sdp"');
-    final String? processedSDP = _sdpOfferToWebRTC(request.body);
-    emit(EventSdp(
-        originator: Originator.remote, type: SdpType.offer, sdp: processedSDP));
+  final String? processedSDP = _sdpOfferToWebRTC(request.body);
 
-    RTCSessionDescription offer =
-        RTCSessionDescription(processedSDP, SdpType.offer.name);
-    try {
-      await _connection!.setRemoteDescription(offer);
-    } catch (error) {
-      request.reply(488);
-      _failed(
-          Originator.system,
-          null,
-          null,
-          null,
-          488,
-          DartSIP_C.CausesType.WEBRTC_ERROR,
-          'SetRemoteDescription(offer) failed');
-      logger.e(
-          'emit "peerconnection:setremotedescriptionfailed" [error:${error.toString()}]');
-      emit(EventSetRemoteDescriptionFailed(exception: error));
-      throw Exceptions.TypeError(
-          'peerconnection.setRemoteDescription() failed');
-    }
+// PATCH: Inject fake fingerprint if missing
+String patchedSDP = processedSDP!;
+if (!patchedSDP.contains('a=fingerprint:')) {
+  logger.w('[DTLS PATCH] Injecting fake fingerprint into incoming offer');
+  final fake = 'sha-256 00:11:22:33:44:55:66:77:88:99:AA:BB:CC:DD:EE:FF:00:11:22:33:44:55:66:77:88:99:AA:BB:CC:DD:EE:FF';
+  patchedSDP = patchedSDP.replaceFirst(
+    RegExp(r'^m=', multiLine: true),
+    'a=fingerprint:$fake\r\na=setup:actpass\r\nm=',
+  );
+}
+
+emit(EventSdp(originator: 'remote', type: 'offer', sdp: patchedSDP));
+RTCSessionDescription offer = RTCSessionDescription(patchedSDP, 'offer');
+
+try {
+  await _connection!.setRemoteDescription(offer);
+} catch (error) {
+  request.reply(488);
+  _failed('system', null, null, null, 488, DartSIP_C.CausesType.WEBRTC_ERROR,
+      'SetRemoteDescription(offer) failed');
+  logger.e('emit "peerconnection:setremotedescriptionfailed" [error:${error.toString()}]');
+  emit(EventSetRemoteDescriptionFailed(exception: error));
+  throw Exceptions.TypeError('peerconnection.setRemoteDescription() failed');
+}
 
     // Create local description.
     if (_state == RtcSessionState.terminated) {
